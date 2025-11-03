@@ -1,0 +1,21 @@
+name: auth
+
+services:
+  auth-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PORT: 80001
+      APP_ENV: production
+    ports: ["80001:80001"]
+    restart: unless-stopped
+    networks: [app_stage_network]
+    container_name: auth-api
+    mem_limit: "512m"
+    cpus: "0.5"
+
+networks:
+  app_stage_network:
+    external: true
+    name: app_stage_network
