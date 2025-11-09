@@ -9,6 +9,7 @@ services:
     environment:
       PORT: 8090
       APP_ENV: production
+      ENVIRONMENT: production
     ports: ["8090:8090"]
     restart: unless-stopped
     networks: [app_network]
