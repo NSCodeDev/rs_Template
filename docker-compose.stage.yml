@@ -1,17 +1,19 @@
-name: auth
+name: advensis-service-stage
 
 services:
-  auth-api:
+  advensis-service-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.stage
+    env_file: ./.env # rendered by CI/CD on VM
     environment:
-      PORT: 80001
-      APP_ENV: production
-    ports: ["80001:80001"]
+      PORT: 8091
+      APP_ENV: staging
+    ports: ["8091:8091"]
+    command: ["/app/entrypoint-stage.sh"]
     restart: unless-stopped
     networks: [app_stage_network]
-    container_name: auth-api
+    container_name: advensis-service-api-stage
     mem_limit: "512m"
     cpus: "0.5"
 

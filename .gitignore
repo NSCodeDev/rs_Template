@@ -10,6 +10,14 @@ node_modules/
 dist/
 build/
 *.log
+env
+.env
+.env.prod
+.env.dev
+.env.production
+.env.development
+.env.local
+
 coverage
 coverage.xml
 htmlcov/

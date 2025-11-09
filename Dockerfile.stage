@@ -18,6 +18,6 @@ COPY . /app/
 RUN chmod +x /app/entrypoint.sh
 
 # expose the django port
-EXPOSE 8090
+EXPOSE 8091
 # command to run django application
-CMD ["./entrypoint.sh"]
+CMD ["./entrypoint-stage.sh"]

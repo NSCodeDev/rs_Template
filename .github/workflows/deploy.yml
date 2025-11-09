@@ -1,0 +1,356 @@
+name: CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - main # Production
+      - dev # Staging
+  workflow_dispatch:
+
+env:
+  VM_HOST: ${{ secrets.VM_HOST }}
+  VM_USER: ${{ secrets.VM_USER }}
+  DEPLOY_PATH: ${{ github.ref_name == 'main' && secrets.DEPLOY_PATH_PROD || secrets.DEPLOY_PATH_STAGE }}
+  ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+  DOCKER_COMPOSE_FILE: ${{ github.ref_name == 'main' && 'docker-compose.yml' || 'docker-compose.stage.yml' }}
+  DOCKER_NETWORK: ${{ github.ref_name == 'main' && 'app_network' || 'app_stage_network' }}
+  ENV_FILE: ${{  github.ref_name == 'main' && secrets.ENV_FILE_PROD || secrets.ENV_FILE_STAGE  }}
+  SERVICE_PORT: ${{ github.ref_name == 'main' && secrets.SERVICE_PORT_PROD || secrets.SERVICE_PORT_STAGE }}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, macOS, X64]
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Environment Info
+        run: |
+          echo "Deploying to ${{ env.ENVIRONMENT }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Compose File: ${{ env.DOCKER_COMPOSE_FILE }}"
+          echo "Network: ${{ env.DOCKER_NETWORK }}"
+
+      - name: Set Release Path
+        id: release
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "release_path=${{ env.DEPLOY_PATH }}/releases/$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Release path will be: ${{ env.DEPLOY_PATH }}/releases/$TIMESTAMP"
+
+      - name: Check VM Reachability
+        run: |
+          echo "Testing connection to ${{ env.VM_HOST }}:22..."
+          if ! nc -zv -w 5 ${{ env.VM_HOST }} 22 2>&1 | grep -q succeeded; then
+            echo "Cannot reach ${{ env.VM_HOST }}:22"
+            exit 1
+          fi
+          echo "Connection successful"
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create Release Directory
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
+
+          echo "Creating directory: $RELEASE_PATH"
+          echo "Shared path: $DEPLOY_PATH/shared"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << EOF
+          set -e
+          # Expand ~ to actual home directory
+          RELEASE_PATH="\$(eval echo "$RELEASE_PATH")"
+          DEPLOY_PATH="\$(eval echo "$DEPLOY_PATH")"
+
+          echo "Expanded paths:"
+          echo "  Release: \$RELEASE_PATH"
+          echo "  Deploy: \$DEPLOY_PATH"
+
+          mkdir -p "\$RELEASE_PATH"
+          mkdir -p "\$DEPLOY_PATH/shared/uploads"
+          mkdir -p "\$DEPLOY_PATH/shared/logs"
+          echo "Release directory created successfully"
+          ls -la "\$DEPLOY_PATH/releases/" | tail -5
+          EOF
+
+      - name: Transfer Files
+        run: |
+          echo "========================================"
+          echo "Transferring files to: ${{ steps.release.outputs.release_path }}"
+          echo "========================================"
+          echo "Local files:"
+          ls -la
+          echo ""
+          echo "Starting rsync..."
+
+          rsync -avzh --progress \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='README.md' \
+            --exclude='deploy.sh' \
+            --exclude='node_modules' \
+            ./ ${{ env.VM_USER }}@${{ env.VM_HOST }}:${{ steps.release.outputs.release_path }}/
+
+          echo ""
+          echo "========================================"
+          echo "Transfer complete!"
+          echo "========================================"
+
+      - name: Create .env file
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << 'ENVEOF'
+          set -e
+          # Expand ~ to actual home directory
+          RELEASE_PATH="$(eval echo "${{ steps.release.outputs.release_path }}")"
+
+          echo "Creating .env file in: $RELEASE_PATH"
+          cd "$RELEASE_PATH"
+
+          # Create .env file with environment-specific configuration from secret
+          cat > .env << 'ENVINNER'
+          ${{ env.ENV_FILE }}
+          ENVINNER
+
+          # Verify .env file was created
+          if [ -f .env ]; then
+            echo "SUCCESS: .env file created"
+            echo "File size: $(wc -c < .env) bytes"
+            echo "Number of lines: $(wc -l < .env)"
+          else
+            echo "ERROR: .env file was not created"
+            exit 1
+          fi
+
+          # Set proper permissions
+          chmod 600 .env
+          echo ".env file permissions set to 600"
+          ENVEOF
+
+      - name: Verify Files Before Deploy
+        run: |
+          echo "Verifying files on remote server..."
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          echo "Checking path: $RELEASE_PATH"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << VERIFY
+          # Expand ~ to actual home directory
+          RELEASE_PATH="\$(eval echo "$RELEASE_PATH")"
+
+          echo "Expanded path: \$RELEASE_PATH"
+          cd "\$RELEASE_PATH"
+          pwd
+          echo ""
+          echo "Files in deployment directory:"
+          ls -lah
+          echo ""
+          echo "Docker compose file check:"
+          if [ -f "docker-compose.yml" ]; then
+            echo "SUCCESS: docker-compose.yml exists"
+            echo "First 5 lines:"
+            head -5 docker-compose.yml
+          else
+            echo "ERROR: docker-compose.yml NOT FOUND!"
+            exit 1
+          fi
+          VERIFY
+
+      - name: Create Docker Network
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} "docker network create ${{ env.DOCKER_NETWORK }} 2>/dev/null || echo 'Network ${{ env.DOCKER_NETWORK }} already exists'"
+
+      - name: Deploy Services
+        id: deploy
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DOCKER_COMPOSE_FILE="${{ env.DOCKER_COMPOSE_FILE }}"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << ENDSSH
+          set -e
+          # Expand ~ to actual home directory
+          RELEASE_PATH="\$(eval echo "$RELEASE_PATH")"
+
+          cd "\$RELEASE_PATH"
+          echo "Working in: \$(pwd)"
+
+          echo "========================================="
+          echo "Starting Docker Compose deployment..."
+          echo "========================================="
+          docker compose -f "$DOCKER_COMPOSE_FILE" pull
+          docker compose -f "$DOCKER_COMPOSE_FILE" up -d --build
+
+          echo ""
+          echo "Waiting for services to start..."
+          sleep 15
+          echo "Done waiting"
+
+          echo ""
+          echo "========================================="
+          echo "Container Status:"
+          echo "========================================="
+          docker compose -f "$DOCKER_COMPOSE_FILE" ps
+          ENDSSH
+
+      - name: Verify Deployment
+        id: verify
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DOCKER_COMPOSE_FILE="${{ env.DOCKER_COMPOSE_FILE }}"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << ENDSSH
+          # Expand ~ to actual home directory
+          RELEASE_PATH="\$(eval echo "$RELEASE_PATH")"
+
+          cd "\$RELEASE_PATH"
+          echo "Verifying in: \$(pwd)"
+
+          echo "Counting running containers..."
+          RUNNING=\$(docker compose -f "$DOCKER_COMPOSE_FILE" ps --filter "status=running" -q | wc -l | tr -d ' ')
+          echo "Running containers: \$RUNNING"
+
+          EXPECTED=1
+
+          if [ "\$RUNNING" -ge "\$EXPECTED" ]; then
+            echo "All required services are running"
+            exit 0
+          else
+            echo "Not all services are running (\$RUNNING/\$EXPECTED)"
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs --tail=50
+            exit 1
+          fi
+          ENDSSH
+
+      - name: Health Check
+        if: success()
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DOCKER_COMPOSE_FILE="${{ env.DOCKER_COMPOSE_FILE }}"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << ENDSSH
+          # Expand ~ to actual home directory
+          RELEASE_PATH="\$(eval echo "$RELEASE_PATH")"
+
+          cd "\$RELEASE_PATH"
+          echo "Checking service health..."
+
+          # Display container health status
+          docker compose -f "$DOCKER_COMPOSE_FILE" ps
+
+          # Check if containers are healthy (if health checks are defined)
+          UNHEALTHY=\$(docker compose -f "$DOCKER_COMPOSE_FILE" ps --filter "health=unhealthy" -q | wc -l | tr -d ' ')
+
+          if [ "\$UNHEALTHY" -eq "0" ]; then
+            echo "[OK] All services are healthy"
+          else
+            echo "[WARNING] Some services may be unhealthy"
+            docker compose -f "$DOCKER_COMPOSE_FILE" ps
+          fi
+          ENDSSH
+
+      - name: Update Current Symlink
+        if: success()
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << ENDSSH
+          RELEASE_PATH=\$(eval echo "$RELEASE_PATH")
+          DEPLOY_PATH=\$(eval echo "$DEPLOY_PATH")
+          echo "Creating symlink: \$DEPLOY_PATH/current -> \$RELEASE_PATH"
+          ln -sfn "\$RELEASE_PATH" "\$DEPLOY_PATH/current"
+          echo "Current symlink updated successfully"
+          ENDSSH
+
+      - name: Cleanup Old Releases
+        if: success()
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << 'CLEANUP'
+          DEPLOY_PATH="$(eval echo "${{ env.DEPLOY_PATH }}")"
+          cd "$DEPLOY_PATH/releases"
+
+          echo "Cleaning up old releases (keeping last 2)..."
+          ls -1dt */ | tail -n +3 | while read dir; do
+            echo "Removing old release: $dir"
+            rm -rf "$dir"
+          done
+
+          echo "Remaining releases:"
+          ls -lah
+          CLEANUP
+
+      - name: Rollback on Failure
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          RELEASE_PATH="${{ steps.release.outputs.release_path }}"
+          DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
+          DOCKER_COMPOSE_FILE="${{ env.DOCKER_COMPOSE_FILE }}"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.VM_USER }}@${{ env.VM_HOST }} bash << ENDSSH
+          set -e
+          # Expand paths
+          RELEASE_PATH=\$(eval echo "$RELEASE_PATH")
+          DEPLOY_PATH=\$(eval echo "$DEPLOY_PATH")
+
+          echo "Rolling back deployment..."
+          echo "Failed release: \$RELEASE_PATH"
+
+          # Stop failed deployment
+          if [ -d "\$RELEASE_PATH" ]; then
+            cd "\$RELEASE_PATH"
+            docker compose -f "$DOCKER_COMPOSE_FILE" down 2>/dev/null || true
+          fi
+
+          # Find previous release
+          PREVIOUS=\$(ls -1dt "\$DEPLOY_PATH"/releases/* 2>/dev/null | sed -n '2p')
+
+          if [ -n "\$PREVIOUS" ] && [ -d "\$PREVIOUS" ]; then
+            echo "Rolling back to previous release: \$PREVIOUS"
+            cd "\$PREVIOUS"
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+            ln -sfn "\$PREVIOUS" "\$DEPLOY_PATH/current"
+            echo "Rollback completed successfully"
+          else
+            echo "No previous release found to rollback"
+          fi
+
+          # Clean up failed release
+          if [ -d "\$RELEASE_PATH" ]; then
+            echo "Removing failed release: \$RELEASE_PATH"
+            rm -rf "\$RELEASE_PATH"
+          fi
+          ENDSSH
+
+      - name: Cleanup SSH Key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Release:** ${{ steps.release.outputs.timestamp }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Target:** ${{ env.VM_USER }}@${{ env.VM_HOST }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Deploy Path:** ${{ env.DEPLOY_PATH }}/current" >> $GITHUB_STEP_SUMMARY
+            echo "- **Service URL:** http://${{ env.VM_HOST }}:${{ env.SERVICE_PORT }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Deployment Failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The deployment to **${{ env.ENVIRONMENT }}** failed and has been rolled back." >> $GITHUB_STEP_SUMMARY
+            echo "Please check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi
