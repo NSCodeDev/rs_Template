@@ -119,12 +119,12 @@ jobs:
           cd "$RELEASE_PATH"
 
           # Create .env file with environment-specific configuration from secret
-          cat > .env << 'ENVINNER'
+          cat > ".env" << 'ENVINNER'
           ${{ env.ENV_FILE }}
           ENVINNER
 
           # Verify .env file was created
-          if [ -f .env ]; then
+          if [ -f ".env" ]; then
             echo "SUCCESS: .env file created"
             echo "File size: $(wc -c < .env) bytes"
             echo "Number of lines: $(wc -l < .env)"
@@ -134,7 +134,7 @@ jobs:
           fi
 
           # Set proper permissions
-          chmod 600 .env
+          chmod 600 ".env"
           echo ".env file permissions set to 600"
           ENVEOF
 
@@ -339,7 +339,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "### Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment Successful " >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- **Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
             echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
@@ -349,7 +349,7 @@ jobs:
             echo "- **Deploy Path:** ${{ env.DEPLOY_PATH }}/current" >> $GITHUB_STEP_SUMMARY
             echo "- **Service URL:** http://${{ env.VM_HOST }}:${{ env.SERVICE_PORT }}" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### Deployment Failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment Failed " >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "The deployment to **${{ env.ENVIRONMENT }}** failed and has been rolled back." >> $GITHUB_STEP_SUMMARY
             echo "Please check the logs above for details." >> $GITHUB_STEP_SUMMARY

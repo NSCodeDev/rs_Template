@@ -1,20 +1,21 @@
-name: advensis-service-stage
+name: advensis_tenant_service_stage
 
 services:
-  advensis-service-api:
+  tenant-api-stage:
     build:
       context: .
       dockerfile: Dockerfile.stage
-    env_file: ./.env # rendered by CI/CD on VM
+    env_file: ./.env
     environment:
-      PORT: 8091
+      PORT: 8051
+      DB_HOST: advensis_postgres_stage
       APP_ENV: staging
       ENVIRONMENT: staging
-    ports: ["8091:8091"]
-    command: ["/app/entrypoint-stage.sh"]
+    ports: ["8051:8051"]
+    command: ["/app/entrypoint.sh"]
     restart: unless-stopped
     networks: [app_stage_network]
-    container_name: advensis-service-api-stage
+    container_name: tenant-api-stage
     mem_limit: "512m"
     cpus: "0.5"
 

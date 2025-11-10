@@ -10,29 +10,65 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from decouple import Config, Csv, RepositoryEnv
+from decouple import config as decouple_config
+from django import conf
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+config = decouple_config
+
+print(f"Running in {ENVIRONMENT} environment")
+
+if ENVIRONMENT == "development":
+    config = Config(RepositoryEnv(os.path.join(BASE_DIR, ".env.development")))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-28ha3ez(a53^cc3a@a_yz*fyu8zv_^f5_t8*dixnivn$7nn=z-"
-
+SECRET_KEY = config(
+    "SECRET_KEY",
+    default="django-insecure-28ha3ez(a53^cc3a@a_yz*fyu8zv_^f5_t8*dixnivn$7nn=z-",
+)
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="", cast=Csv())
 
+# Force script name for proxy/gateway prefix (only set if configured)
+_force_script_name = config("FORCE_SCRIPT_NAME", default="")
+
+if _force_script_name:
+    FORCE_SCRIPT_NAME = _force_script_name
+    USE_X_FORWARDED_HOST = True
+    USE_X_FORWARDED_PORT = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+# CORS
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="http://localhost:8001,http://localhost:3000,http://localhost:8001/",
+    cast=Csv(),
+)
+CORS_ALLOW_CREDENTIALS = True
+
+if DEBUG:
+    CSRF_COOKIE_SECURE = False
+    CSRF_COOKIE_HTTPONLY = False
 
 # install local app here
 
-LOCAL_APPS = [
-    "exampleapp",
-]
+LOCAL_APPS = [""]
 
 
 # Application definition
@@ -44,6 +80,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "rest_framework",
     "drf_spectacular",
     "drf_spectacular_sidecar",
@@ -52,6 +89,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -85,8 +124,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": config("DB_NAME"),
+        "USER": config("DB_USER"),
+        "PASSWORD": config("DB_PASSWORD"),
+        "PORT": config("DB_PORT", cast=int),
+        "HOST": config("DB_HOST"),
     }
 }
 
@@ -132,12 +175,132 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-
 # Django REST Framework Configuration
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
+
+
+# WhiteNoise configuration for serving static files
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+# Static files
+# Adjust STATIC_URL based on whether we're behind a proxy/gateway
+if _force_script_name:
+    STATIC_URL = f"{_force_script_name}/static/"
+else:
+    STATIC_URL = "/static/"
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Media files
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+
+# Logging configuration
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "filters": {
+        "require_debug_true": {
+            "()": "django.utils.log.RequireDebugTrue",
+        },
+        "require_debug_false": {
+            "()": "django.utils.log.RequireDebugFalse",
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG" if DEBUG else "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+        "file": {
+            "level": "INFO",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": BASE_DIR / "logs" / "django.log",
+            "maxBytes": 1024 * 1024 * 10,  # 10 MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+        "error_file": {
+            "level": "ERROR",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": BASE_DIR / "logs" / "error.log",
+            "maxBytes": 1024 * 1024 * 10,  # 10 MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "django.request": {
+            "handlers": ["error_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["file"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+    },
+    "root": {
+        "handlers": ["console", "file"],
+        "level": "INFO",
+    },
+}
+
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+
+"""
+ change drf spectacular settings as per your project requirements
+"""
+
+# SPECTACULAR_SETTINGS = {
+#     "TITLE": "Advensis Auth Service API",
+#     "DESCRIPTION": "Authentication and Authorization microservice",
+#     "VERSION": "1.0.0",
+#     "SERVE_INCLUDE_SCHEMA": False,
+#     "SWAGGER_UI_DIST": "SIDECAR",
+#     "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+#     "REDOC_DIST": "SIDECAR",
+#     "COMPONENT_SPLIT_REQUEST": True,
+#     "SCHEMA_PATH_PREFIX": r"/api/v[0-9]",
+#     "SWAGGER_UI_SETTINGS": {
+#         "persistAuthorization": True,
+#     }
+# }
