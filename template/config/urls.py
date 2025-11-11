@@ -30,7 +30,7 @@ urlpatterns = [
         "api/v1/",
         include(
             [
-                path("", include("exampleapp.urls")),
+                path("", include("apps.exampleapp.urls")),
             ]
         ),
     ),
