@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# collecting static files
+# Collecting static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-# run migrations
+# Run migrations
 echo "Applying database migrations..."
 python manage.py makemigrations --merge --noinput
 python manage.py migrate
 
-# run server 
-echo "Starting server..."
+# Run server 
+echo "Starting server on port ${PORT}..."
 python manage.py runserver 0.0.0.0:${PORT}

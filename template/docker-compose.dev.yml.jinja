@@ -1,0 +1,111 @@
+name: {{ docker_name }}
+
+services:
+{%- if use_postgres %}
+  postgres-dev:
+    image: postgres:{{ postgres_version }}
+    environment:
+      POSTGRES_USER: ${DB_USER:-devuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      POSTGRES_DB: ${DB_NAME:-{{ project_slug }}_db_dev}
+    ports: 
+      - "{{ db_port }}:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    container_name: {{ project_slug }}-postgres-dev
+    networks:
+      - app_dev_network
+{%- endif %}
+
+{%- if use_redis %}
+  redis-dev:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app_dev_network
+    container_name: {{ project_slug }}-redis-dev
+{%- endif %}
+
+  {{ docker_api_container_name }}:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.development
+    environment:
+      PORT: {{ server_port }}
+      APP_ENV: development
+      ENVIRONMENT: development
+{%- if use_postgres %}
+      DB_HOST: postgres-dev
+      DB_PORT: 5432
+{%- endif %}
+{%- if use_redis %}
+      REDIS_HOST: redis-dev
+      REDIS_PORT: 6379
+{%- endif %}
+    ports: 
+      - "{{ server_port }}:{{ server_port }}"
+    restart: unless-stopped
+    networks: 
+      - app_dev_network
+    volumes:
+      - .:/app
+    container_name: {{ docker_api_container_name }}
+{%- if use_postgres %}
+    depends_on:
+      - postgres-dev
+{%- endif %}
+
+{%- if use_celery %}
+
+  celery-worker-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.development
+    command: celery -A config worker -l debug
+    volumes:
+      - .:/app
+    depends_on:
+      - {{ docker_api_container_name }}
+{%- if use_redis %}
+      - redis-dev
+{%- endif %}
+    networks:
+      - app_dev_network
+    container_name: {{ project_slug }}-celery-worker-dev
+    restart: unless-stopped
+
+  celery-beat-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.development
+    command: celery -A config beat -l debug
+    volumes:
+      - .:/app
+    depends_on:
+      - {{ docker_api_container_name }}
+{%- if use_redis %}
+      - redis-dev
+{%- endif %}
+    networks:
+      - app_dev_network
+    container_name: {{ project_slug }}-celery-beat-dev
+    restart: unless-stopped
+{%- endif %}
+
+networks:
+  app_dev_network:
+    external: true
+    name: app_dev_network
+
+{%- if use_postgres %}
+
+volumes:
+  pgdata-dev:
+{%- endif %}

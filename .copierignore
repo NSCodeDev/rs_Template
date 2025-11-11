@@ -1,0 +1,51 @@
+# Files to exclude when copying the template
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.Python
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+
+# Environment files (will be generated from .jinja templates)
+.env
+.env.development
+.env.staging
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.github/
+
+# Copier
+.copier-answers.yml
+
+# Development files
+*.bak
+.DS_Store
+
+# Docker volumes (runtime)
+pgdata/
+pgdata-dev/
+pgdata-stage/
+
+# Documentation (for template repo only)
+CHANGELOG.md
+CONTRIBUTING.md
+QUICKREF.md
+test-template.bat
+test-template.sh

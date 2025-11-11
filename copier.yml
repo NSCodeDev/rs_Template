@@ -1,0 +1,108 @@
+# Copier Configuration File
+# This defines all questions Copier will ask users
+
+_min_copier_version: "9.0"
+_subdirectory: template
+_answers_file: .copier-answers.yml
+
+# === PROJECT IDENTITY ===
+project_name:
+  type: str
+  help: "Project name (e.g., my-project)"
+  default: "my-project"
+
+project_slug:
+  type: str
+  help: "Python package name (lowercase, underscores only)"
+  default: "{{ project_name.lower().replace(' ', '_').replace('-', '_') }}"
+  validator: >-
+    {% if not project_slug.replace('_', '').isalnum() %}
+    Must contain only letters, numbers, and underscores
+    {% endif %}
+
+project_description:
+  type: str
+  help: "Short project description"
+  default: "A Service of Advensis Microservices"
+
+author_name:
+  type: str
+  help: "Your name or organization"
+  default: "Advensis"
+
+author_email:
+  type: str
+  help: "Contact email"
+  default: "contact@advensis.com"
+# === PYTHON & DJANGO VERSIONS ===
+python_version:
+  type: str
+  help: "Python version (3.10, 3.11, or 3.12+)"
+  choices:
+    - "3.10"
+    - "3.11"
+    - "3.12"
+    - "3.13"
+    - "3.13.7"
+  default: "3.13.7"
+
+# django_version:
+#   type: str
+#   help: "Django version"
+#   choices:
+#     - "4.2"
+#     - "5.0"
+#     - "5.1"
+#   default: "5.1"
+
+# === INFRASTRUCTURE ===
+
+use_postgres:
+  type: bool
+  help: "Use PostgreSQL? (No = SQLite)"
+  default: true
+
+postgres_version:
+  type: str
+  help: "PostgreSQL version"
+  when: "{{ use_postgres }}"
+  choices:
+    - "15"
+    - "16"
+    - "17"
+    - "17.4"
+    - "18"
+  default: "17.4"
+
+# === ADDITIONAL SERVICES ===
+use_celery:
+  type: bool
+  help: "Add Celery for background tasks?"
+  default: false
+
+use_redis:
+  type: bool
+  help: "Add Redis for caching/sessions?"
+  default: false
+# === DEPLOYMENT SETTING FOR DOCKER ===
+
+docker_name:
+  type: str
+  help: "Docker container name"
+  default: "advensis_{{ project_name }}_service_dev"
+
+docker_api_container_name:
+  type: str
+  help: "Docker API container name"
+  default: "{{ project_slug }}-api"
+
+server_port:
+  type: int
+  help: "Server port to expose"
+  required: true
+
+db_port:
+  type: int
+  help: "Database port to expose"
+  when: "{{ use_postgres }}"
+  default: 5433

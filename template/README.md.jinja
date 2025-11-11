@@ -1,0 +1,278 @@
+# {{ project_name }}
+
+{{ project_description }}
+
+## Project Information
+
+- **Author**: {{ author_name }}
+- **Contact**: {{ author_email }}
+- **Python Version**: {{ python_version }}
+{%- if use_postgres %}
+- **Database**: PostgreSQL {{ postgres_version }}
+{%- else %}
+- **Database**: SQLite
+{%- endif %}
+
+## Features
+
+- Django REST Framework
+- JWT Authentication
+{%- if use_postgres %}
+- PostgreSQL Database
+{%- endif %}
+{%- if use_redis %}
+- Redis for Caching/Sessions
+{%- endif %}
+{%- if use_celery %}
+- Celery for Background Tasks
+{%- endif %}
+- Docker & Docker Compose
+- Swagger/OpenAPI Documentation (drf-spectacular)
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python {{ python_version }}+ (for local development)
+
+### Development Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd {{ project_slug }}
+   ```
+
+2. **Create environment file**
+   ```bash
+   cp .env.example .env.development
+   ```
+   
+   Edit `.env.development` with your configuration.
+
+3. **Create Docker network** (if not exists)
+   ```bash
+   docker network create app_dev_network
+   ```
+
+4. **Start development environment**
+   ```bash
+   docker-compose -f docker-compose.dev.yml up --build
+   ```
+
+5. **Access the application**
+   - API: http://localhost:{{ server_port }}
+   - API Documentation: http://localhost:{{ server_port }}/api/schema/swagger-ui/
+   - Redoc: http://localhost:{{ server_port }}/api/schema/redoc/
+
+### Production Setup
+
+1. **Create environment file**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` with your production configuration.
+
+2. **Create Docker network** (if not exists)
+   ```bash
+   docker network create app_network
+   ```
+
+3. **Start production environment**
+   ```bash
+   docker-compose up -d --build
+   ```
+
+## Environment Variables
+
+Create a `.env` file based on `.env.example`:
+
+```env
+# Django Settings
+SECRET_KEY=your-secret-key-here
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database Configuration
+{%- if use_postgres %}
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME={{ project_slug }}_db
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=postgres
+DB_PORT=5432
+{%- else %}
+DB_ENGINE=django.db.backends.sqlite3
+DB_NAME=db.sqlite3
+{%- endif %}
+
+# Application
+PORT={{ server_port }}
+APP_ENV=development
+
+{%- if use_redis %}
+
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
+{%- endif %}
+
+{%- if use_celery %}
+
+# Celery Configuration
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+{%- endif %}
+```
+
+## Docker Commands
+
+### Development
+
+```bash
+# Start services
+docker-compose -f docker-compose.dev.yml up
+
+# Start in detached mode
+docker-compose -f docker-compose.dev.yml up -d
+
+# View logs
+docker-compose -f docker-compose.dev.yml logs -f
+
+# Stop services
+docker-compose -f docker-compose.dev.yml down
+
+# Rebuild containers
+docker-compose -f docker-compose.dev.yml up --build
+```
+
+### Production
+
+```bash
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Rebuild containers
+docker-compose up -d --build
+```
+
+### Database Management
+
+```bash
+# Run migrations
+docker-compose exec {{ docker_api_container_name }} python manage.py migrate
+
+# Create superuser
+docker-compose exec {{ docker_api_container_name }} python manage.py createsuperuser
+
+# Access Django shell
+docker-compose exec {{ docker_api_container_name }} python manage.py shell
+```
+
+## Project Structure
+
+```
+{{ project_slug }}/
+├── apps/                    # Django applications
+│   ├── exampleapp/         # Example app
+│   └── anotherapp/         # Another example app
+├── config/                 # Project configuration
+│   ├── settings.py        # Django settings
+│   ├── urls.py           # URL configuration
+│   ├── wsgi.py           # WSGI configuration
+│   └── asgi.py           # ASGI configuration
+├── core/                  # Core utilities
+│   ├── models/           # Base models
+│   └── utils/            # Utility functions
+├── middlewares/          # Custom middlewares
+├── docker-compose.yml    # Production Docker Compose
+├── docker-compose.dev.yml # Development Docker Compose
+├── Dockerfile            # Production Dockerfile
+├── Dockerfile.stage      # Staging Dockerfile
+├── requirements.txt      # Python dependencies
+├── manage.py            # Django management script
+└── entrypoint.sh        # Container entrypoint script
+```
+
+## API Documentation
+
+The API documentation is automatically generated using drf-spectacular:
+
+- **Swagger UI**: `/api/schema/swagger-ui/`
+- **ReDoc**: `/api/schema/redoc/`
+- **OpenAPI Schema**: `/api/schema/`
+
+## Development
+
+### Adding a New App
+
+```bash
+docker-compose exec {{ docker_api_container_name }} python manage.py startapp myapp apps/myapp
+```
+
+### Running Tests
+
+```bash
+docker-compose exec {{ docker_api_container_name }} python manage.py test
+```
+
+### Code Formatting
+
+```bash
+# Using black (add to requirements if needed)
+docker-compose exec {{ docker_api_container_name }} black .
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+If port {{ server_port }} is already in use, you can change it in:
+- `docker-compose.yml` or `docker-compose.dev.yml`
+- `.env` file (PORT variable)
+
+### Database Connection Issues
+
+1. Ensure PostgreSQL container is running:
+   ```bash
+   docker-compose ps
+   ```
+
+2. Check database credentials in `.env` file
+
+3. Verify network connectivity:
+   ```bash
+   docker network inspect app_dev_network
+   ```
+
+### Reset Database
+
+```bash
+# Development
+docker-compose -f docker-compose.dev.yml down -v
+docker-compose -f docker-compose.dev.yml up --build
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+[Add your license information here]
+
+## Support
+
+For support, email {{ author_email }} or create an issue in the repository.

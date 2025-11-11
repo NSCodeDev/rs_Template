@@ -1,0 +1,102 @@
+name: {{ docker_name.replace('_dev', '') }}
+
+services:
+  {{ docker_api_container_name }}:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: ./.env
+    environment:
+      PORT: {{ server_port }}
+{%- if use_postgres %}
+      DB_HOST: advensis_postgres
+{%- endif %}
+      APP_ENV: production
+      ENVIRONMENT: production
+    ports: 
+      - "{{ server_port }}:{{ server_port }}"
+    command: ["/app/entrypoint.sh"]
+    restart: unless-stopped
+    networks: 
+      - app_network
+    container_name: {{ docker_api_container_name }}
+    mem_limit: "512m"
+    cpus: "0.5"
+{%- if use_postgres %}
+    depends_on:
+      - postgres
+{%- endif %}
+
+{%- if use_postgres %}
+
+  postgres:
+    image: postgres:{{ postgres_version }}
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-{{ project_slug }}_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app_network
+    container_name: {{ project_slug }}-postgres
+    restart: unless-stopped
+{%- endif %}
+
+{%- if use_redis %}
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+    container_name: {{ project_slug }}-redis
+    restart: unless-stopped
+{%- endif %}
+
+{%- if use_celery %}
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: ./.env
+    command: celery -A config worker -l info
+    depends_on:
+      - {{ docker_api_container_name }}
+{%- if use_redis %}
+      - redis
+{%- endif %}
+    networks:
+      - app_network
+    container_name: {{ project_slug }}-celery-worker
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: ./.env
+    command: celery -A config beat -l info
+    depends_on:
+      - {{ docker_api_container_name }}
+{%- if use_redis %}
+      - redis
+{%- endif %}
+    networks:
+      - app_network
+    container_name: {{ project_slug }}-celery-beat
+    restart: unless-stopped
+{%- endif %}
+
+networks:
+  app_network:
+    external: true
+    name: app_network
+
+{%- if use_postgres %}
+
+volumes:
+  pgdata:
+{%- endif %}
