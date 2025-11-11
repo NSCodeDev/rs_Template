@@ -92,9 +92,18 @@ class BaseModel(  # type: ignore
         abstract = True
 
 
+class TenantModel(BaseModel):
+    """Tenant aware model"""
+
+    tenant_id = models.UUIDField(
+        null=True, blank=True, db_index=True, help_text="Tenant identifier"
+    )
+
+    class Meta(BaseModel.Meta):
+        abstract = True
+
+
 # Custom manager to handle soft-deleted objects
-
-
 class SoftDeleteManager(models.Manager):
     """Manager that excludes soft-deleted objects"""
 

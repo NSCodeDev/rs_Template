@@ -17,7 +17,8 @@ COPY . /app/
 
 RUN chmod +x /app/entrypoint.sh
 
+ENV PORT=8001
 # expose the django port
-EXPOSE 8090
+EXPOSE 8001
 # command to run django application
 CMD ["./entrypoint.sh"]

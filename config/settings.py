@@ -68,8 +68,7 @@ if DEBUG:
 
 # install local app here
 
-LOCAL_APPS = [""]
-
+LOCAL_APPS = ["apps.exampleapp"]
 
 # Application definition
 
