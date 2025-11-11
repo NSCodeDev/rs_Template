@@ -22,11 +22,11 @@ COPY . /app/
 RUN chmod +x /app/entrypoint.sh
 
 # Environment variables
-ENV PORT={{ server_port }}
+ENV PORT={{ stage_server_port }}
 ENV APP_ENV=staging
 
 # Expose the Django port
-EXPOSE {{ server_port }}
+EXPOSE {{ stage_server_port }}
 
 # Command to run Django application
 CMD ["./entrypoint.sh"]

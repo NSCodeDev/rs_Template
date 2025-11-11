@@ -5,16 +5,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.stage
-    env_file: ./.env.staging
+    env_file: ./.env
     environment:
-      PORT: {{ server_port }}
+      PORT: {{ stage_server_port }}
 {%- if use_postgres %}
       DB_HOST: advensis_postgres_stage
 {%- endif %}
       APP_ENV: staging
       ENVIRONMENT: staging
     ports: 
-      - "{{ server_port }}:{{ server_port }}"
+      - "{{ stage_server_port }}:{{ stage_server_port }}"
     command: ["/app/entrypoint.sh"]
     restart: unless-stopped
     networks: 
@@ -27,33 +27,6 @@ services:
       - postgres-stage
 {%- endif %}
 
-{%- if use_postgres %}
-
-  postgres-stage:
-    image: postgres:{{ postgres_version }}
-    environment:
-      POSTGRES_USER: ${DB_USER:-stageuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-stagepassword}
-      POSTGRES_DB: ${DB_NAME:-{{ project_slug }}_db_stage}
-    volumes:
-      - pgdata-stage:/var/lib/postgresql/data
-    networks:
-      - app_stage_network
-    container_name: {{ project_slug }}-postgres-stage
-    restart: unless-stopped
-{%- endif %}
-
-{%- if use_redis %}
-
-  redis-stage:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-      - app_stage_network
-    container_name: {{ project_slug }}-redis-stage
-    restart: unless-stopped
-{%- endif %}
 
 {%- if use_celery %}
 
@@ -61,13 +34,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.stage
-    env_file: ./.env.staging
+    env_file: ./.env
     command: celery -A config worker -l info
     depends_on:
       - {{ docker_api_container_name }}
-{%- if use_redis %}
-      - redis-stage
-{%- endif %}
     networks:
       - app_stage_network
     container_name: {{ project_slug }}-celery-worker-stage
@@ -77,13 +47,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.stage
-    env_file: ./.env.staging
+    env_file: ./.env
     command: celery -A config beat -l info
     depends_on:
       - {{ docker_api_container_name }}
-{%- if use_redis %}
-      - redis-stage
-{%- endif %}
     networks:
       - app_stage_network
     container_name: {{ project_slug }}-celery-beat-stage
@@ -94,9 +61,3 @@ networks:
   app_stage_network:
     external: true
     name: app_stage_network
-
-{%- if use_postgres %}
-
-volumes:
-  pgdata-stage:
-{%- endif %}

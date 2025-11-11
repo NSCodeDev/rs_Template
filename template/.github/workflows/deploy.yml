@@ -1,4 +1,4 @@
-name: {{project_name}} CI/CD Deployment
+name: CI/CD Deployment
 
 on:
   push:

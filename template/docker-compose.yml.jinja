@@ -27,33 +27,6 @@ services:
       - postgres
 {%- endif %}
 
-{%- if use_postgres %}
-
-  postgres:
-    image: postgres:{{ postgres_version }}
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-{{ project_slug }}_db}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - app_network
-    container_name: {{ project_slug }}-postgres
-    restart: unless-stopped
-{%- endif %}
-
-{%- if use_redis %}
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-      - app_network
-    container_name: {{ project_slug }}-redis
-    restart: unless-stopped
-{%- endif %}
 
 {%- if use_celery %}
 
@@ -65,9 +38,6 @@ services:
     command: celery -A config worker -l info
     depends_on:
       - {{ docker_api_container_name }}
-{%- if use_redis %}
-      - redis
-{%- endif %}
     networks:
       - app_network
     container_name: {{ project_slug }}-celery-worker
@@ -81,9 +51,6 @@ services:
     command: celery -A config beat -l info
     depends_on:
       - {{ docker_api_container_name }}
-{%- if use_redis %}
-      - redis
-{%- endif %}
     networks:
       - app_network
     container_name: {{ project_slug }}-celery-beat
@@ -95,8 +62,3 @@ networks:
     external: true
     name: app_network
 
-{%- if use_postgres %}
-
-volumes:
-  pgdata:
-{%- endif %}

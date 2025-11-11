@@ -101,6 +101,11 @@ server_port:
   help: "Server port to expose"
   required: true
 
+stage_server_port:
+  type: int
+  help: "Staging server port to expose"
+  required: true
+
 db_port:
   type: int
   help: "Database port to expose"
