@@ -82,6 +82,11 @@ class BaseModel(  # type: ignore
     """Complete base model for microservices"""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    zdata = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Flexible JSON field for additional data",
+    )
 
     class Meta(
         TimeStampedModel.Meta,
