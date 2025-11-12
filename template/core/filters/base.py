@@ -17,7 +17,7 @@ class BaseFilter(django_filters.FilterSet):
     is_active = django_filters.BooleanFilter(field_name='is_active', lookup_expr='exact')
     
     class Meta:
-        model = BaseModel
+        abstract = True
         fields = {
             'created_at': ['lt', 'gt', 'exact'],
             'modified_at': ['lt', 'gt', 'exact'],
