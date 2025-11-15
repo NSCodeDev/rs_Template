@@ -31,9 +31,6 @@ media/
 .git/
 .github/
 
-# Copier
-.copier-answers.yml
-
 # Development files
 *.bak
 .DS_Store
