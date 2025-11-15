@@ -64,6 +64,19 @@ if DEBUG:
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_HTTPONLY = False
 
+
+SKIP_PATHS = config(
+    "SKIP_PATHS",
+    default="/api/docs/schema/,/api/docs/swagger/,/api/docs/redoc/,/admin/login/,/api/v1/auth/login/",
+    cast=Csv(),
+)
+# skip paths from middleware
+if _force_script_name:
+    SKIP_PATHS = [f"{_force_script_name}{path}" for path in SKIP_PATHS]
+
+
+
+
 # Install local apps here
 LOCAL_APPS = ["apps.exampleapp"]
 
@@ -246,7 +259,63 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
 }
+
+
+
+
+# Simple JWT Settings
+from datetime import timedelta
+
+# Load RSA keys for JWT signing (Auth Service uses private key)
+JWT_PRIVATE_KEY_RAW = config("JWT_PRIVATE_KEY", default="", cast=str)
+JWT_PUBLIC_KEY_RAW = config("JWT_PUBLIC_KEY", default="", cast=str)
+
+# Process keys: replace escaped newlines and validate
+JWT_PRIVATE_KEY = (
+    JWT_PRIVATE_KEY_RAW.replace("\\n", "\n").strip() if JWT_PRIVATE_KEY_RAW else None
+)
+JWT_PUBLIC_KEY = (
+    JWT_PUBLIC_KEY_RAW.replace("\\n", "\n").strip() if JWT_PUBLIC_KEY_RAW else None
+)
+
+# Use RS256 (asymmetric) if both keys are provided, otherwise fall back to HS256
+USE_RSA = bool(
+    JWT_PRIVATE_KEY
+    and JWT_PUBLIC_KEY
+    and JWT_PRIVATE_KEY.startswith("-----BEGIN")
+    and JWT_PUBLIC_KEY.startswith("-----BEGIN")
+)
+
+if USE_RSA:
+    JWT_ALGORITHM = "RS256"
+    JWT_SIGNING_KEY = JWT_PRIVATE_KEY
+    JWT_VERIFYING_KEY = JWT_PUBLIC_KEY
+    print("✅ Using RS256 (asymmetric) JWT signing", flush=True)
+else:
+    JWT_ALGORITHM = "HS256"
+    JWT_SIGNING_KEY = SECRET_KEY
+    JWT_VERIFYING_KEY = SECRET_KEY
+    print(
+        "⚠️  Using HS256 (symmetric) JWT signing - configure JWT_PRIVATE_KEY and JWT_PUBLIC_KEY for production",
+        flush=True,
+    )
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": JWT_ALGORITHM,
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "VERIFYING_KEY": JWT_VERIFYING_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
 
 
 # Logging configuration
